@@ -67,16 +67,16 @@ def aitkin_bisection(f, a, b, tol=1e-6, max_iter=100):
 
 # Run both methods
 a, b = 1, 2
-root_bisection, iter_bisection = bisection(f, a, b)
-root_aitkin, iter_aitkin = aitkin_bisection(f, a, b)
+root_bisection, iter_bisection = bisection(f, a, b, 1e-12)
+root_aitkin, iter_aitkin = aitkin_bisection(f, a, b, 1e-12)
 
-print(f"Standard Bisection: Root = {root_bisection:.10f}, Iterations = {iter_bisection}")
-print(f"Aitkin Bisection: Root = {root_aitkin:.10f}, Iterations = {iter_aitkin}")
-print(f"Actual Root: {1.5214271655680195:.10f}")
+print(f"Standard Bisection: Root = {root_bisection:.15f}, Iterations = {iter_bisection}")
+print(f"Aitkin Bisection: Root = {root_aitkin:.15f}, Iterations = {iter_aitkin}")
+print(f"Actual Root: x≈1.521379706804567569604081")
 
 # Output:
 # ```
-# Standard Bisection: Root = 1.5213799477, Iterations = 20
-# Aitkin Bisection: Root = 1.5213795415, Iterations = 8
-# Actual Root: 1.5214271656
+# Standard Bisection: Root = 1.521379706804964, Iterations = 40
+# Aitkin Bisection: Root = 1.521379706804562, Iterations = 15
+# Actual Root: x≈1.521379706804567569604081
 # ```
