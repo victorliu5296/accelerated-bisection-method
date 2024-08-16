@@ -18,12 +18,134 @@ struct BenchmarkResult
     double root;
     int iterations;
     int function_evaluations;
-    double elapsed_time_ms;
+    double elapsed_time_us;
 };
 
 double aitken_accelerate(double x0, double x1, double x2)
 {
     return x2 - ((x2 - x1) * (x2 - x1)) / (x2 - 2 * x1 + x0);
+}
+
+static BenchmarkResult aitken_bisection(const std::function<double(double)> &f, double a, double b, double tol = 1e-6, int max_iter = 100)
+{
+    auto start_time = std::chrono::high_resolution_clock::now();
+    int function_evaluations = 2; // Initial evaluations for f(a) and f(b)
+    int iterations = 0;
+
+    double fa = f(a), fb = f(b);
+    if (fa * fb >= 0)
+    {
+        throw std::runtime_error("Function values at interval endpoints must have opposite signs");
+    }
+
+    while ((b - a) > tol && iterations < max_iter)
+    {
+        // Perform three bisection steps
+        double c1 = (a + b) / 2;
+        double fc1 = f(c1);
+        function_evaluations++;
+
+        if (fc1 * fa < 0)
+        {
+            b = c1;
+            fb = fc1;
+        }
+        else
+        {
+            a = c1;
+            fa = fc1;
+        }
+
+        double c2 = (a + b) / 2;
+        double fc2 = f(c2);
+        function_evaluations++;
+
+        if (fc2 * fa < 0)
+        {
+            b = c2;
+            fb = fc2;
+        }
+        else
+        {
+            a = c2;
+            fa = fc2;
+        }
+
+        double c3 = (a + b) / 2;
+        double fc3 = f(c3);
+        function_evaluations++;
+
+        // Apply Aitken's acceleration
+        double denominator = c3 - 2 * c2 + c1;
+        if (std::abs(denominator) > 1e-10) // Avoid division by very small numbers
+        {
+            double c_aitken = c1 - std::pow(c2 - c1, 2) / denominator;
+
+            // Check if c_aitken satisfies IVT
+            if (a < c_aitken && c_aitken < b)
+            {
+                double fc_aitken = f(c_aitken);
+                function_evaluations++;
+
+                if (fc_aitken * fa < 0)
+                {
+                    b = c_aitken;
+                    fb = fc_aitken;
+                }
+                else if (fc_aitken * fb < 0)
+                {
+                    a = c_aitken;
+                    fa = fc_aitken;
+                }
+                else
+                {
+                    if (fc3 * fa < 0)
+                    {
+                        b = c3;
+                        fb = fc3;
+                    }
+                    else
+                    {
+                        a = c3;
+                        fa = fc3;
+                    }
+                }
+            }
+            else
+            {
+                if (fc3 * fa < 0)
+                {
+                    b = c3;
+                    fb = fc3;
+                }
+                else
+                {
+                    a = c3;
+                    fa = fc3;
+                }
+            }
+        }
+        else
+        {
+            if (fc3 * fa < 0)
+            {
+                b = c3;
+                fb = fc3;
+            }
+            else
+            {
+                a = c3;
+                fa = fc3;
+            }
+        }
+
+        iterations++;
+    }
+
+    double root = (a + b) / 2;
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
+    return {root, iterations, function_evaluations, duration.count() / 1000.0};
 }
 
 static BenchmarkResult improved_hybrid_bisection(const std::function<double(double)> &f, double a, double b)
@@ -166,71 +288,6 @@ static BenchmarkResult regular_bisection(const std::function<double(double)> &f,
     throw std::runtime_error("Regular bisection method failed to converge within the maximum number of iterations");
 }
 
-static BenchmarkResult itp_method(const std::function<double(double)> &f, double a, double b,
-                                  double epsilon = EPSILON, double kappa1 = 0.1, double kappa2 = 1.0, int n0 = 1)
-{
-    auto start_time = std::chrono::high_resolution_clock::now();
-    int function_evaluations = 0;
-    double ya = f(a);
-    double yb = f(b);
-    function_evaluations += 2;
-
-    if (ya * yb >= 0)
-    {
-        throw std::runtime_error("Function values at a and b must have opposite signs.");
-    }
-
-    int n_half = std::ceil(std::log2((b - a) / (2 * epsilon)));
-    int n_max = n_half + n0;
-    int j = 0;
-
-    while (b - a > 2 * epsilon)
-    {
-        // Calculating Parameters
-        double x_half = (a + b) / 2;
-        double r = epsilon * std::pow(2, n_max - j) - (b - a) / 2;
-        double delta = kappa1 * std::pow(b - a, kappa2);
-
-        // Interpolation
-        double x_f = (yb * a - ya * b) / (yb - ya);
-
-        // Truncation
-        int sigma = (x_half > x_f) ? 1 : -1;
-        double x_t = (delta <= std::abs(x_half - x_f)) ? x_f + sigma * delta : x_half;
-
-        // Projection
-        double x_itp = (std::abs(x_t - x_half) <= r) ? x_t : x_half - sigma * r;
-
-        // Updating Interval
-        double y_itp = f(x_itp);
-        function_evaluations++;
-
-        if (y_itp > 0)
-        {
-            b = x_itp;
-            yb = y_itp;
-        }
-        else if (y_itp < 0)
-        {
-            a = x_itp;
-            ya = y_itp;
-        }
-        else
-        {
-            a = x_itp;
-            b = x_itp;
-            break;
-        }
-
-        j++;
-    }
-
-    double root = (a + b) / 2;
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
-    return {root, j, function_evaluations, static_cast<double>(duration.count() / 1000.0)};
-}
-
 class Benchmark
 {
 public:
@@ -245,24 +302,24 @@ public:
     static Result run_hybrid(const std::function<double(double)> &f, double a, double b)
     {
         auto result = improved_hybrid_bisection(f, a, b);
-        return {result.elapsed_time_ms * 1000.0, result.iterations, result.function_evaluations, result.root};
+        return {result.elapsed_time_us, result.iterations, result.function_evaluations, result.root};
     }
 
     static Result run_regular(const std::function<double(double)> &f, double a, double b)
     {
         auto result = regular_bisection(f, a, b);
-        return {result.elapsed_time_ms * 1000.0, result.iterations, result.function_evaluations, result.root};
+        return {result.elapsed_time_us, result.iterations, result.function_evaluations, result.root};
     }
 
-    static Result run_itp(const std::function<double(double)> &f, double a, double b)
+    static Result run_aitken(const std::function<double(double)> &f, double a, double b)
     {
-        auto result = itp_method(f, a, b);
-        return {result.elapsed_time_ms * 1000.0, result.iterations, result.function_evaluations, result.root};
+        auto result = aitken_bisection(f, a, b);
+        return {result.elapsed_time_us, result.iterations, result.function_evaluations, result.root};
     }
 
     static void benchmark(const std::function<double(double)> &f, double a, double b, int num_runs)
     {
-        std::vector<Result> hybrid_results, regular_results, itp_results;
+        std::vector<Result> hybrid_results, regular_results, itp_results, aitken_results;
 
         try
         {
@@ -270,7 +327,7 @@ public:
             {
                 hybrid_results.push_back(run_hybrid(f, a, b));
                 regular_results.push_back(run_regular(f, a, b));
-                itp_results.push_back(run_itp(f, a, b));
+                aitken_results.push_back(run_aitken(f, a, b));
             }
         }
         catch (const std::exception &e)
@@ -316,8 +373,9 @@ public:
         };
 
         print_stats("Improved Hybrid Bisection", calculate_stats(hybrid_results));
-        print_stats("ITP Method", calculate_stats(itp_results));
         print_stats("Regular Bisection", calculate_stats(regular_results));
+        print_stats("ITP Method", calculate_stats(itp_results));
+        print_stats("Aitken-Bisection Method", calculate_stats(aitken_results));
     }
 };
 
